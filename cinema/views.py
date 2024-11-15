@@ -1,4 +1,4 @@
-from django.db.models import Count, F
+from django.db.models import Count, F, ExpressionWrapper, IntegerField
 from rest_framework import viewsets
 from rest_framework.pagination import PageNumberPagination
 
@@ -60,13 +60,20 @@ class MovieViewSet(viewsets.ModelViewSet):
         genres = self.request.query_params.get("genres")
         title = self.request.query_params.get("title")
         if actors:
-            actors = self._params_to_inits(actors)
-            queryset = queryset.filter(actors__id__in=actors)
+            try:
+                actors = self._params_to_inits(actors)
+                queryset = queryset.filter(actors__id__in=actors)
+            except ValueError:
+                pass
         if genres:
-            genres = self._params_to_inits(genres)
-            queryset = queryset.filter(genres__id__in=genres)
+            try:
+                genres = self._params_to_inits(genres)
+                queryset = queryset.filter(genres__id__in=genres)
+            except ValueError:
+                pass
         if title:
             queryset = queryset.filter(title__icontains=title)
+
         if self.action in ("list", "retrieve"):
             queryset = queryset.prefetch_related("actors", "genres")
         return queryset.distinct()
@@ -98,10 +105,12 @@ class MovieSessionViewSet(viewsets.ModelViewSet):
                 queryset
                 .select_related()
                 .annotate(
-                    tickets_available=(
+                    capacity=ExpressionWrapper(
                         F("cinema_hall__rows")
-                        * F("cinema_hall__seats_in_row")
-                        - Count("tickets"))
+                        * F("cinema_hall__seats_in_row"),
+                        output_field=IntegerField()
+                    ),
+                    tickets_available=F("capacity") - Count("tickets")
                 )
             )
         elif self.action == "retrieve":
